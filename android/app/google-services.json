@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "863240345118",
+    "project_id": "growlit-f0da9",
+    "storage_bucket": "growlit-f0da9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:863240345118:android:45b6f4978d8fccaf38000f",
+        "android_client_info": {
+          "package_name": "com.example.growlit_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDu04mOyOqbn4SUuBq-d2Dfda6rBHq_XMA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

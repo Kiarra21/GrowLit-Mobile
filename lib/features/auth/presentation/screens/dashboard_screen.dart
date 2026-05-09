@@ -1,94 +1,227 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:growlit_mobile/services/iot_mqtt_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final GrowlitMqttService _mqttService = GrowlitMqttService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    Future<void>.microtask(() async {
+      if (kDebugMode) {
+        debugPrint('Dashboard: starting MQTT connect()');
+      }
+      try {
+        await _mqttService.connect();
+      } catch (_) {
+        // Connection state is surfaced in the UI through the service notifiers.
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        constraints: const BoxConstraints.expand(),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF7FAF1), Color(0xFFEAF5C8), Color(0xFFCBEA77)],
-            stops: [0.0, 0.38, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _mqttService.isConnected,
+        _mqttService.lastError,
+      ]),
+      builder: (context, _) {
+        return StreamBuilder<GrowlitSensorData>(
+          stream: _mqttService.sensorStream,
+          initialData:
+              _mqttService.latestSensorData ?? GrowlitSensorData.placeholder(),
+          builder: (context, snapshot) {
+            final sensorData = snapshot.data ?? GrowlitSensorData.placeholder();
+
+            return Scaffold(
+              backgroundColor: Colors.transparent,
+              body: Container(
+                constraints: const BoxConstraints.expand(),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFFF7FAF1),
+                      Color(0xFFEAF5C8),
+                      Color(0xFFCBEA77),
+                    ],
+                    stops: [0.0, 0.38, 1.0],
+                  ),
+                ),
+                child: SafeArea(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Halo, User !',
-                          style: Theme.of(context).textTheme.displayMedium
-                              ?.copyWith(
-                                color: AppColors.darkGreen,
-                                fontSize: 25,
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Yukk, Cek Kebun Kamu Sekarang',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: AppColors.darkGreen.withValues(
-                                  alpha: 0.72,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Halo, User !',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .displayMedium
+                                      ?.copyWith(
+                                        color: AppColors.darkGreen,
+                                        fontSize: 25,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                 ),
-                                fontSize: 15,
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Data kebun masuk dari MQTT HiveMQ Cloud',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        color: AppColors.darkGreen.withValues(
+                                          alpha: 0.72,
+                                        ),
+                                        fontSize: 15,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Icon(
+                                  Icons.person_outline_rounded,
+                                  color: AppColors.resedaGreen,
+                                  size: 26,
+                                ),
                               ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _ConnectionBanner(
+                          isConnected: _mqttService.isConnected.value,
+                          message: _mqttService.lastError.value,
+                        ),
+                        const SizedBox(height: 18),
+                        _MetricCard(
+                          title: 'Ketersediaan Air',
+                          value: '${sensorData.distance.toStringAsFixed(1)} cm',
+                          subtitle: sensorData.pumpOn
+                              ? 'pompa menyala'
+                              : 'pompa mati',
+                          progress: _distanceProgress(sensorData.distance),
+                        ),
+                        const SizedBox(height: 14),
+                        _MetricCard(
+                          title: 'Intensitas Cahaya',
+                          value: sensorData.ldr.toString(),
+                          subtitle: sensorData.lampOn
+                              ? 'lampu menyala'
+                              : 'lampu mati',
+                          progress: _ldrProgress(sensorData.ldr),
+                        ),
+                        const SizedBox(height: 14),
+                        _InfoCard(
+                          text:
+                              'ESP32 mengirim JSON ke topic growlit/sensor. Lampu dan pompa tetap dikendalikan otomatis oleh firmware.',
                         ),
                       ],
                     ),
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Icon(
-                          Icons.person_outline_rounded,
-                          color: AppColors.resedaGreen,
-                          size: 26,
-                        ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  double _distanceProgress(double distance) {
+    final normalized = 1 - (distance / 20);
+    return normalized.clamp(0.0, 1.0);
+  }
+
+  double _ldrProgress(int ldr) {
+    final normalized = ldr / 4095;
+    return normalized.clamp(0.0, 1.0);
+  }
+}
+
+class _ConnectionBanner extends StatelessWidget {
+  const _ConnectionBanner({required this.isConnected, required this.message});
+
+  final bool isConnected;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = isConnected
+        ? const Color(0xFFE7F4D6)
+        : const Color(0xFFFDEBD7);
+    final accent = isConnected
+        ? AppColors.resedaGreen
+        : const Color(0xFFC06A2C);
+    final label = isConnected ? 'MQTT tersambung' : 'MQTT belum tersambung';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+            color: accent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.darkGreen,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ),
-                  ],
                 ),
-                const SizedBox(height: 18),
-                _MetricCard(
-                  title: 'Ketersediaan Air',
-                  value: '5 cm',
-                  subtitle: 'rendah',
-                  progress: 0.62,
-                ),
-                const SizedBox(height: 14),
-                _MetricCard(
-                  title: 'Intensitas Cahaya',
-                  value: '1800 lx',
-                  subtitle: 'berlebih',
-                  progress: 0.86,
-                ),
+                if (message != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    message!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.darkGreen.withValues(alpha: 0.72),
+                        ),
+                  ),
+                ],
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -131,9 +264,9 @@ class _MetricCard extends StatelessWidget {
               Text(
                 title,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.darkGreen,
-                  fontWeight: FontWeight.w800,
-                ),
+                      color: AppColors.darkGreen,
+                      fontWeight: FontWeight.w800,
+                    ),
               ),
               const Icon(Icons.circle, color: AppColors.lightGreen, size: 14),
             ],
@@ -250,10 +383,10 @@ class _Semi3DDiagram extends StatelessWidget {
                   child: Text(
                     value,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: AppColors.darkGreen,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 17,
-                    ),
+                          color: AppColors.darkGreen,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                        ),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -261,15 +394,39 @@ class _Semi3DDiagram extends StatelessWidget {
                   child: Text(
                     subtitle,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.darkGreen.withValues(alpha: 0.62),
-                      fontSize: 10.5,
-                    ),
+                          color: AppColors.darkGreen.withValues(alpha: 0.62),
+                          fontSize: 10.5,
+                        ),
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF7D8),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.darkGreen.withValues(alpha: 0.8),
+            ),
       ),
     );
   }

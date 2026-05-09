@@ -1,4 +1,4 @@
-# growlit_mobile
+# growlit
 
 A new Flutter project.
 

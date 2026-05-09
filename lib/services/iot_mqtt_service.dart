@@ -2,8 +2,24 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:growlit_mobile/services/local_notification_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+
+class GrowlitNotificationItem {
+  const GrowlitNotificationItem({
+    required this.title,
+    required this.message,
+    required this.time,
+    required this.icon,
+  });
+
+  final String title;
+  final String message;
+  final String time;
+  final IconData icon;
+}
 
 class GrowlitSensorData {
   const GrowlitSensorData({
@@ -48,9 +64,12 @@ class GrowlitMqttService {
     _clientId,
     _brokerPort,
     ) {
-    // Use MQTT over TCP/TLS (port 8883) to match ESP32 connection
-    _client.useWebSocket = false;
-    _client.secure = true; // TLS over WebSocket
+    // Prefer MQTT over secure WebSocket on mobile networks.
+    _client.useWebSocket = true;
+    // For WSS, provide a wss:// URI and keep secure=false.
+    // In mqtt_client, secure=true is for TLS TCP and disables websocket mode.
+    _client.secure = false;
+    _client.websocketProtocols = const ['mqtt'];
 
     // ✅ Accept semua certificate (untuk development)
     _client.onBadCertificate = (dynamic cert) => true;
@@ -70,16 +89,13 @@ class GrowlitMqttService {
     _client.connectionMessage = MqttConnectMessage()
       .withClientIdentifier(_clientId)
       .startClean()
-      .withWillQos(MqttQos.atLeastOnce)
       .authenticateAs(_brokerUser, _brokerPassword); // credentials
-
-    _updatesSubscription = _client.updates?.listen(_handleUpdates);
   }
 
   // ✅ HiveMQ Cloud settings (sama seperti ESP32)
   static const String _brokerHost =
-      'a9bb0e5dfc5b4a7e90e4631d05616ee8.s1.eu.hivemq.cloud';
-  static const int _brokerPort = 8883; // MQTT over TLS
+      'wss://a9bb0e5dfc5b4a7e90e4631d05616ee8.s1.eu.hivemq.cloud/mqtt';
+  static const int _brokerPort = 8884; // MQTT over secure WebSocket
   static const String _brokerUser = 'growlit';
   static const String _brokerPassword = 'Growlit123';
   static final String _clientId = 'GrowLit_Flutter_${DateTime.now().millisecondsSinceEpoch}';
@@ -95,26 +111,32 @@ class GrowlitMqttService {
 
   final ValueNotifier<bool> isConnected = ValueNotifier<bool>(false);
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
+    final ValueNotifier<List<GrowlitNotificationItem>> notifications =
+      ValueNotifier<List<GrowlitNotificationItem>>(<GrowlitNotificationItem>[]);
   final StreamController<GrowlitSensorData> _sensorController =
       StreamController<GrowlitSensorData>.broadcast();
 
   GrowlitSensorData? _latestSensorData;
   bool _connecting = false;
+    bool? _lastLampOn;
+    bool? _lastPumpOn;
 
   Stream<GrowlitSensorData> get sensorStream => _sensorController.stream;
   GrowlitSensorData? get latestSensorData => _latestSensorData;
 
   Future<void> connect() async {
+    final currentState = _client.connectionStatus?.state;
     if (kDebugMode) {
       debugPrint(
         'GrowlitMqttService: connect() called; '
-        'state=${_client.connectionStatus?.state}',
+        'state=$currentState',
       );
     }
 
-    if (_client.connectionStatus?.state == MqttConnectionState.connected) {
+    if (currentState == MqttConnectionState.connected) {
       return;
     }
+    if (currentState == MqttConnectionState.connecting) return;
     if (_connecting) return;
 
     _connecting = true;
@@ -139,6 +161,7 @@ class GrowlitMqttService {
       }
 
       _client.subscribe(sensorTopic, MqttQos.atLeastOnce);
+      _ensureUpdatesSubscription();
       isConnected.value = true;
     } on Exception catch (e) {
       isConnected.value = false;
@@ -172,10 +195,17 @@ class GrowlitMqttService {
 
   void dispose() {
     _updatesSubscription?.cancel();
+    _updatesSubscription = null;
     _sensorController.close();
     isConnected.dispose();
     lastError.dispose();
+    notifications.dispose();
     _client.disconnect();
+  }
+
+  void _ensureUpdatesSubscription() {
+    _updatesSubscription?.cancel();
+    _updatesSubscription = _client.updates?.listen(_handleUpdates);
   }
 
   void _handleUpdates(List<MqttReceivedMessage<MqttMessage>> events) {
@@ -184,27 +214,86 @@ class GrowlitMqttService {
       final payload = MqttPublishPayload.bytesToStringAsString(
         message.payload.message,
       );
-      if (kDebugMode) debugPrint('MQTT received: $payload');
+      if (kDebugMode) {
+        debugPrint('MQTT received topic=${event.topic}: $payload');
+      }
 
       try {
         final decoded = jsonDecode(payload) as Map<String, dynamic>;
         final sensorData = GrowlitSensorData.fromJson(decoded);
         _latestSensorData = sensorData;
         _sensorController.add(sensorData);
+        _recordNotifications(sensorData);
       } catch (error) {
         lastError.value = 'Payload MQTT tidak valid: $error';
       }
     }
   }
 
+  void _recordNotifications(GrowlitSensorData sensorData) {
+    final items = <GrowlitNotificationItem>[];
+
+    if (sensorData.pumpOn && _lastPumpOn != true) {
+      items.add(
+        GrowlitNotificationItem(
+          title: 'Pompa Menyala',
+          message: 'Pompa aktif otomatis karena kondisi air terdeteksi rendah.',
+          time: _formatTime(sensorData.receivedAt),
+          icon: Icons.water_drop_rounded,
+        ),
+      );
+    }
+
+    if (sensorData.lampOn && _lastLampOn != true) {
+      items.add(
+        GrowlitNotificationItem(
+          title: 'Lampu Menyala',
+          message: 'Lampu aktif otomatis karena intensitas cahaya rendah.',
+          time: _formatTime(sensorData.receivedAt),
+          icon: Icons.light_mode_rounded,
+        ),
+      );
+    }
+
+    _lastPumpOn = sensorData.pumpOn;
+    _lastLampOn = sensorData.lampOn;
+
+    if (items.isEmpty) return;
+
+    notifications.value = <GrowlitNotificationItem>[
+      ...items.reversed,
+      ...notifications.value,
+    ];
+
+    for (final item in items) {
+      unawaited(
+        GrowlitLocalNotificationService.instance.showAlert(
+          title: item.title,
+          body: item.message,
+          payload: item.title,
+        ),
+      );
+    }
+  }
+
+  String _formatTime(DateTime dateTime) {
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
   void _handleConnected() {
     if (kDebugMode) debugPrint('MQTT: Connected!');
+    _ensureUpdatesSubscription();
     isConnected.value = true;
     lastError.value = null;
   }
 
   void _handleDisconnected() {
-    if (kDebugMode) debugPrint('MQTT: Disconnected.');
+    if (kDebugMode) {
+      final status = _client.connectionStatus;
+      debugPrint('MQTT: Disconnected. status=$status');
+    }
     isConnected.value = false;
   }
 
@@ -217,6 +306,7 @@ class GrowlitMqttService {
     if (kDebugMode) debugPrint('MQTT: Auto reconnected!');
     isConnected.value = true;
     _client.subscribe(sensorTopic, MqttQos.atLeastOnce);
+    _ensureUpdatesSubscription();
   }
 
   void _handleSubscribed(String topic) {

@@ -5,6 +5,7 @@ import 'account_screen.dart';
 import 'dashboard_screen.dart';
 import 'history_screen.dart';
 import 'notifications_screen.dart';
+import 'login_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
   const BerandaScreen({super.key});
@@ -95,9 +96,12 @@ class _BerandaScreenState extends State<BerandaScreen> {
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.of(dialogContext).pop();
-                          setState(() {
-                            _selectedIndex = 0;
-                          });
+                          Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                            (route) => false,
+                          );
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.resedaGreen,

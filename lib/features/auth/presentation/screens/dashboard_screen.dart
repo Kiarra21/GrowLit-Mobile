@@ -12,6 +12,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final GrowlitMqttService _mqttService = GrowlitMqttService.instance;
+  int _lastNotifiedCount = 0;
 
   @override
   void initState() {
@@ -30,10 +31,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mqttService = GrowlitMqttService.instance;
+    final notificationCount = mqttService.notifications.value.length;
+
+    if (notificationCount > _lastNotifiedCount) {
+      _lastNotifiedCount = notificationCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+
+        final latest = mqttService.notifications.value.firstOrNull;
+        if (latest == null) return;
+
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(
+              content: Text('${latest.title}: ${latest.message}'),
+              duration: const Duration(seconds: 3),
+              backgroundColor: AppColors.resedaGreen,
+            ),
+          );
+      });
+    }
+
     return AnimatedBuilder(
       animation: Listenable.merge([
         _mqttService.isConnected,
         _mqttService.lastError,
+        mqttService.notifications,
       ]),
       builder: (context, _) {
         return StreamBuilder<GrowlitSensorData>(
@@ -140,10 +165,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           progress: _ldrProgress(sensorData.ldr),
                         ),
                         const SizedBox(height: 14),
-                        _InfoCard(
-                          text:
-                              'ESP32 mengirim JSON ke topic growlit/sensor. Lampu dan pompa tetap dikendalikan otomatis oleh firmware.',
-                        ),
                       ],
                     ),
                   ),
@@ -408,26 +429,3 @@ class _Semi3DDiagram extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF7D8),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        text,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.darkGreen.withValues(alpha: 0.8),
-            ),
-      ),
-    );
-  }
-}

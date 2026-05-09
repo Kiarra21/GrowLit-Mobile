@@ -1,3 +1,4 @@
+import 'package:growlit_mobile/services/iot_mqtt_service.dart';
 import 'package:flutter/material.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
@@ -15,47 +16,13 @@ class NotificationItem {
   final IconData icon;
 }
 
-const List<NotificationItem> _kTodayNotifications = [
-  NotificationItem(
-    title: 'Pengairan Otomatis',
-    message: 'Pompa dinyalakan karena ketinggian air rendah',
-    time: '08:12',
-    icon: Icons.water_drop_rounded,
-  ),
-  NotificationItem(
-    title: 'Pencahayaan',
-    message: 'Lampu LED dinyalakan karena intensitas cahaya rendah',
-    time: '07:45',
-    icon: Icons.light_mode_rounded,
-  ),
-  NotificationItem(
-    title: 'Pengairan',
-    message: 'Pengisian selesai, pompa dimatikan',
-    time: '06:30',
-    icon: Icons.check_circle_outline,
-  ),
-];
-
-const List<NotificationItem> _kYesterdayNotifications = [
-  NotificationItem(
-    title: 'Pencahayaan',
-    message: 'Intensitas cahaya tinggi — lampu dimatikan',
-    time: '18:20',
-    icon: Icons.light_mode_rounded,
-  ),
-  NotificationItem(
-    title: 'Pengairan Otomatis',
-    message: 'Pompa menyala (jadwal berkala)',
-    time: '12:05',
-    icon: Icons.water_drop_rounded,
-  ),
-];
-
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final mqttService = GrowlitMqttService.instance;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
@@ -73,33 +40,57 @@ class NotificationsScreen extends StatelessWidget {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Text(
-                    'Notifikasi',
-                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                      color: AppColors.darkGreen,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
+          child: AnimatedBuilder(
+            animation: mqttService.notifications,
+            builder: (context, _) {
+              final liveNotifications = mqttService.notifications.value;
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Text(
+                        'Notifikasi',
+                        style:
+                            Theme.of(context).textTheme.displayMedium?.copyWith(
+                                  color: AppColors.darkGreen,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 24),
+                    if (liveNotifications.isNotEmpty) ...[
+                      _SectionLabel(title: 'Notifikasi Perangkat'),
+                      const SizedBox(height: 10),
+                      ...liveNotifications.map(
+                        (n) => _NotificationTile(
+                          item: NotificationItem(
+                            title: n.title,
+                            message: n.message,
+                            time: n.time,
+                            icon: n.icon,
+                          ),
+                        ),
+                      ),
+                    ] else
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 40),
+                          child: Text(
+                            'Belum ada notifikasi',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: AppColors.darkGreen.withValues(alpha: 0.56),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                _SectionLabel(title: 'Hari ini'),
-                const SizedBox(height: 10),
-                ..._kTodayNotifications.map((n) => _NotificationTile(item: n)),
-                const SizedBox(height: 18),
-                _SectionLabel(title: 'Kemarin'),
-                const SizedBox(height: 10),
-                ..._kYesterdayNotifications.map(
-                  (n) => _NotificationTile(item: n),
-                ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),

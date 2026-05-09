@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:growlit_mobile/firebase_options.dart';
 import 'package:growlit_mobile/features/splash/presentation/screens/splash_screen_one.dart';
+import 'package:growlit_mobile/services/local_notification_service.dart';
 import 'package:growlit_mobile/theme/theme.dart';
 
 Future<void> main() async {
@@ -15,6 +16,12 @@ Future<void> main() async {
     debugPrint('Firebase not configured for this platform.');
   } on FirebaseException catch (error) {
     debugPrint('Firebase initialization skipped: ${error.message}');
+  }
+
+  try {
+    await GrowlitLocalNotificationService.instance.initialize();
+  } catch (error) {
+    debugPrint('Local notifications initialization skipped: $error');
   }
 
   runApp(const MyApp());

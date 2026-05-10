@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:growlit_mobile/services/session_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
 import 'account_screen.dart';
@@ -8,7 +9,10 @@ import 'notifications_screen.dart';
 import 'login_screen.dart';
 
 class BerandaScreen extends StatefulWidget {
-  const BerandaScreen({super.key});
+  const BerandaScreen({super.key, required this.username, required this.email});
+
+  final String username;
+  final String email;
 
   @override
   State<BerandaScreen> createState() => _BerandaScreenState();
@@ -21,7 +25,11 @@ class _BerandaScreenState extends State<BerandaScreen> {
     const DashboardScreen(),
     const NotificationsScreen(),
     const HistoryScreen(),
-    AccountScreen(onLogoutPressed: _showLogoutDialog),
+    AccountScreen(
+      username: widget.username,
+      email: widget.email,
+      onLogoutPressed: _showLogoutDialog,
+    ),
   ];
 
   void _showLogoutDialog() {
@@ -95,6 +103,7 @@ class _BerandaScreenState extends State<BerandaScreen> {
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () {
+                          SessionService.instance.clearSession();
                           Navigator.of(dialogContext).pop();
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute<void>(

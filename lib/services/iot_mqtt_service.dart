@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:growlit_mobile/services/local_notification_service.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class GrowlitNotificationItem {
   const GrowlitNotificationItem({
@@ -46,6 +47,16 @@ class GrowlitSensorData {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'ldr': ldr,
+      'jarak': distance,
+      'lampu': lampOn,
+      'pompa': pumpOn,
+      'receivedAt': receivedAt,
+    };
+  }
+
   static GrowlitSensorData placeholder() {
     return GrowlitSensorData(
       ldr: 0,
@@ -59,11 +70,7 @@ class GrowlitSensorData {
 
 class GrowlitMqttService {
   GrowlitMqttService._()
-    : _client = MqttServerClient.withPort(
-    _brokerHost,
-    _clientId,
-    _brokerPort,
-    ) {
+    : _client = MqttServerClient.withPort(_brokerHost, _clientId, _brokerPort) {
     // Prefer MQTT over secure WebSocket on mobile networks.
     _client.useWebSocket = true;
     // For WSS, provide a wss:// URI and keep secure=false.
@@ -76,7 +83,8 @@ class GrowlitMqttService {
 
     _client.logging(on: kDebugMode);
     _client.setProtocolV311();
-    _client.connectTimeoutPeriod = 20000; // increase timeout for mobile networks
+    _client.connectTimeoutPeriod =
+        20000; // increase timeout for mobile networks
     _client.keepAlivePeriod = 30;
     _client.autoReconnect = true;
     _client.resubscribeOnAutoReconnect = true;
@@ -87,9 +95,9 @@ class GrowlitMqttService {
     _client.onSubscribed = _handleSubscribed;
     _client.onFailedConnectionAttempt = _handleFailedConnectionAttempt;
     _client.connectionMessage = MqttConnectMessage()
-      .withClientIdentifier(_clientId)
-      .startClean()
-      .authenticateAs(_brokerUser, _brokerPassword); // credentials
+        .withClientIdentifier(_clientId)
+        .startClean()
+        .authenticateAs(_brokerUser, _brokerPassword); // credentials
   }
 
   // ✅ HiveMQ Cloud settings (sama seperti ESP32)
@@ -98,7 +106,8 @@ class GrowlitMqttService {
   static const int _brokerPort = 8884; // MQTT over secure WebSocket
   static const String _brokerUser = 'growlit';
   static const String _brokerPassword = 'Growlit123';
-  static final String _clientId = 'GrowLit_Flutter_${DateTime.now().millisecondsSinceEpoch}';
+  static final String _clientId =
+      'GrowLit_Flutter_${DateTime.now().millisecondsSinceEpoch}';
 
   static const String sensorTopic = 'growlit/sensor';
   static const String controlTopic = 'growlit/control';
@@ -107,19 +116,19 @@ class GrowlitMqttService {
 
   final MqttServerClient _client;
   StreamSubscription<List<MqttReceivedMessage<MqttMessage>>>?
-      _updatesSubscription;
+  _updatesSubscription;
 
   final ValueNotifier<bool> isConnected = ValueNotifier<bool>(false);
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
-    final ValueNotifier<List<GrowlitNotificationItem>> notifications =
+  final ValueNotifier<List<GrowlitNotificationItem>> notifications =
       ValueNotifier<List<GrowlitNotificationItem>>(<GrowlitNotificationItem>[]);
   final StreamController<GrowlitSensorData> _sensorController =
       StreamController<GrowlitSensorData>.broadcast();
 
   GrowlitSensorData? _latestSensorData;
   bool _connecting = false;
-    bool? _lastLampOn;
-    bool? _lastPumpOn;
+  bool? _lastLampOn;
+  bool? _lastPumpOn;
 
   Stream<GrowlitSensorData> get sensorStream => _sensorController.stream;
   GrowlitSensorData? get latestSensorData => _latestSensorData;
@@ -204,28 +213,50 @@ class GrowlitMqttService {
   }
 
   void _ensureUpdatesSubscription() {
-    _updatesSubscription?.cancel();
-    _updatesSubscription = _client.updates?.listen(_handleUpdates);
+    if (_updatesSubscription != null) {
+      return;
+    }
+    _updatesSubscription = _client.updates!.listen(_handleUpdates);
   }
 
-  void _handleUpdates(List<MqttReceivedMessage<MqttMessage>> events) {
-    for (final event in events) {
-      final message = event.payload as MqttPublishMessage;
-      final payload = MqttPublishPayload.bytesToStringAsString(
-        message.payload.message,
-      );
+  Future<void> _updateFirestore(GrowlitSensorData data) async {
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final payload = data.toJson();
+
+      await firestore.collection('status').doc('terkini').set(payload);
+    } catch (e) {
       if (kDebugMode) {
-        debugPrint('MQTT received topic=${event.topic}: $payload');
+        print('Gagal menyimpan status ke Firestore: $e');
+      }
+    }
+  }
+
+  void _handleUpdates(List<MqttReceivedMessage<MqttMessage>> event) {
+    for (final message in event) {
+      final MqttPublishMessage pubMess = message.payload as MqttPublishMessage;
+      final String payload = MqttPublishPayload.bytesToStringAsString(
+        pubMess.payload.message,
+      );
+
+      if (kDebugMode) {
+        debugPrint('MQTT received topic=${message.topic}: $payload');
       }
 
-      try {
-        final decoded = jsonDecode(payload) as Map<String, dynamic>;
-        final sensorData = GrowlitSensorData.fromJson(decoded);
-        _latestSensorData = sensorData;
-        _sensorController.add(sensorData);
-        _recordNotifications(sensorData);
-      } catch (error) {
-        lastError.value = 'Payload MQTT tidak valid: $error';
+      if (message.topic == sensorTopic) {
+        try {
+          final data = GrowlitSensorData.fromJson(jsonDecode(payload));
+          _sensorController.add(data);
+          _latestSensorData = data;
+
+          // Perbarui status di Firestore
+          _updateFirestore(data);
+
+          // Cek perubahan status untuk notifikasi
+          _recordNotifications(data);
+        } catch (error) {
+          lastError.value = 'Payload MQTT tidak valid: $error';
+        }
       }
     }
   }
@@ -315,7 +346,8 @@ class GrowlitMqttService {
 
   void _handleFailedConnectionAttempt(int attempt) {
     isConnected.value = false;
-    lastError.value = 'MQTT gagal tersambung ke HiveMQ Cloud (percobaan $attempt).';
+    lastError.value =
+        'MQTT gagal tersambung ke HiveMQ Cloud (percobaan $attempt).';
     if (kDebugMode) debugPrint(lastError.value);
   }
 }

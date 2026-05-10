@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:growlit_mobile/features/auth/presentation/screens/beranda_screen.dart';
+import 'package:growlit_mobile/services/local_notification_service.dart';
+import 'package:growlit_mobile/services/session_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 import 'dart:ui';
 
@@ -52,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final data = query.docs.first.data();
       final storedEmail = (data['email'] ?? '').toString().trim().toLowerCase();
       final storedPassword = (data['password'] ?? '').toString();
+      final storedUsername = (data['username'] ?? '').toString().trim();
 
       final isValid = storedEmail == email && storedPassword == password;
 
@@ -60,9 +63,26 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      await SessionService.instance.saveSession(
+        username: storedUsername.isEmpty ? 'User' : storedUsername,
+        email: storedEmail,
+      );
+
+      await GrowlitLocalNotificationService.instance.showAlert(
+        title: 'Login berhasil',
+        body:
+            'Selamat datang, ${storedUsername.isEmpty ? 'User' : storedUsername}',
+        payload: 'login_success',
+      );
+
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(builder: (_) => const BerandaScreen()),
+        MaterialPageRoute<void>(
+          builder: (_) => BerandaScreen(
+            username: storedUsername.isEmpty ? 'User' : storedUsername,
+            email: storedEmail,
+          ),
+        ),
       );
     } on FirebaseException catch (error) {
       _showError(error.message ?? 'Gagal login ke Firestore.');
@@ -80,10 +100,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red.shade700,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
     );
   }
 
@@ -152,7 +169,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.white.withValues(alpha: 0.96),
                                     borderRadius: BorderRadius.circular(24.0),
                                     border: Border.all(
-                                      color: Colors.white.withValues(alpha: 0.9),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.9,
+                                      ),
                                       width: 1.0,
                                     ),
                                     boxShadow: [
@@ -222,17 +241,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                         obscureText: !_isPasswordVisible,
                                         validator: (value) =>
                                             value == null || value.isEmpty
-                                                ? 'Password wajib diisi'
-                                                : null,
+                                            ? 'Password wajib diisi'
+                                            : null,
                                         suffixIcon: IconButton(
                                           icon: Icon(
                                             _isPasswordVisible
                                                 ? Icons.visibility_off_outlined
                                                 : Icons.visibility_outlined,
-                                            color:
-                                                AppColors.darkGreen.withValues(
-                                              alpha: 0.72,
-                                            ),
+                                            color: AppColors.darkGreen
+                                                .withValues(alpha: 0.72),
                                           ),
                                           onPressed: () {
                                             setState(() {
@@ -246,8 +263,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       SizedBox(
                                         width: 120,
                                         child: ElevatedButton(
-                                          onPressed:
-                                              _isLoading ? null : _handleLogin,
+                                          onPressed: _isLoading
+                                              ? null
+                                              : _handleLogin,
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor:
                                                 AppColors.resedaGreen,
@@ -262,14 +280,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                               ? const SizedBox(
                                                   width: 18,
                                                   height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
+                                                  child: CircularProgressIndicator(
                                                     strokeWidth: 2,
                                                     valueColor:
                                                         AlwaysStoppedAnimation<
-                                                            Color>(
-                                                      Colors.white,
-                                                    ),
+                                                          Color
+                                                        >(Colors.white),
                                                   ),
                                                 )
                                               : const Text('Login'),

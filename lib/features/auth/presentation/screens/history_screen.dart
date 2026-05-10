@@ -1,106 +1,106 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:excel/excel.dart';
 import 'package:flutter/material.dart';
 import 'package:growlit_mobile/theme/colors.dart';
-
-class _HistoryDay {
-  const _HistoryDay({
-    required this.date,
-    required this.day,
-    required this.time,
-    required this.waterLevel,
-    required this.waterStatus,
-    required this.lightLevel,
-    required this.lightStatus,
-    required this.controlNote,
-  });
-
-  final String date;
-  final String day;
-  final String time;
-  final String waterLevel;
-  final String waterStatus;
-  final String lightLevel;
-  final String lightStatus;
-  final String controlNote;
-}
-
-const List<_HistoryDay> _kWeeklyHistory = [
-  _HistoryDay(
-    date: '05/05/2026',
-    day: 'Senin',
-    time: '23:59',
-    waterLevel: '12 cm',
-    waterStatus: 'Cukup',
-    lightLevel: '1850 lx',
-    lightStatus: 'Berlebih',
-    controlNote: 'Lampu ON',
-  ),
-  _HistoryDay(
-    date: '06/05/2026',
-    day: 'Selasa',
-    time: '23:59',
-    waterLevel: '10 cm',
-    waterStatus: 'Cukup',
-    lightLevel: '1620 lx',
-    lightStatus: 'Cukup',
-    controlNote: 'Normal',
-  ),
-  _HistoryDay(
-    date: '07/05/2026',
-    day: 'Rabu',
-    time: '23:59',
-    waterLevel: '8 cm',
-    waterStatus: 'Rendah',
-    lightLevel: '1480 lx',
-    lightStatus: 'Cukup',
-    controlNote: 'Pompa ON',
-  ),
-  _HistoryDay(
-    date: '08/05/2026',
-    day: 'Kamis',
-    time: '23:59',
-    waterLevel: '13 cm',
-    waterStatus: 'Cukup',
-    lightLevel: '1750 lx',
-    lightStatus: 'Cukup',
-    controlNote: 'Normal',
-  ),
-  _HistoryDay(
-    date: '09/05/2026',
-    day: 'Jumat',
-    time: '23:59',
-    waterLevel: '7 cm',
-    waterStatus: 'Rendah',
-    lightLevel: '1390 lx',
-    lightStatus: 'Kurang',
-    controlNote: 'Pompa ON, Lampu ON',
-  ),
-  _HistoryDay(
-    date: '10/05/2026',
-    day: 'Sabtu',
-    time: '23:59',
-    waterLevel: '11 cm',
-    waterStatus: 'Cukup',
-    lightLevel: '1690 lx',
-    lightStatus: 'Cukup',
-    controlNote: 'Normal',
-  ),
-  _HistoryDay(
-    date: '11/05/2026',
-    day: 'Minggu',
-    time: '23:59',
-    waterLevel: '9 cm',
-    waterStatus: 'Rendah',
-    lightLevel: '1510 lx',
-    lightStatus: 'Cukup',
-    controlNote: 'Reset mingguan',
-  ),
-];
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _formatValue(dynamic value) {
+    if (value == null) return '-';
+    if (value is bool) return value ? 'ON' : 'OFF';
+    if (value is num) {
+      if (value is int) return value.toString();
+      return value.toStringAsFixed(value % 1 == 0 ? 0 : 2);
+    }
+    return value.toString();
+  }
+
+  Future<void> _exportHistoryToExcel(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final query = await FirebaseFirestore.instance
+          .collection('history')
+          .orderBy('recordedAt', descending: false)
+          .get();
+
+      if (query.docs.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Belum ada data history untuk diexport.'),
+          ),
+        );
+        return;
+      }
+
+      final excel = Excel.createExcel();
+      final sheet = excel[excel.tables.keys.first];
+      sheet.appendRow([
+        TextCellValue('Tanggal'),
+        TextCellValue('Waktu'),
+        TextCellValue('LDR'),
+        TextCellValue('Jarak'),
+        TextCellValue('Lampu'),
+        TextCellValue('Pompa'),
+      ]);
+
+      for (final doc in query.docs) {
+        final data = doc.data();
+        final recordedAtRaw = data['recordedAt'];
+        final recordedAt = recordedAtRaw is Timestamp
+            ? recordedAtRaw.toDate()
+            : DateTime.now();
+
+        sheet.appendRow([
+          TextCellValue(
+            '${_twoDigits(recordedAt.day)}/${_twoDigits(recordedAt.month)}/${recordedAt.year}',
+          ),
+          TextCellValue(
+            '${_twoDigits(recordedAt.hour)}:${_twoDigits(recordedAt.minute)}',
+          ),
+          TextCellValue(_formatValue(data['ldr'])),
+          TextCellValue(_formatValue(data['jarak'])),
+          TextCellValue(_formatValue(data['lampu'])),
+          TextCellValue(_formatValue(data['pompa'])),
+        ]);
+      }
+
+      final bytes = excel.encode();
+      if (bytes == null) {
+        throw StateError('Gagal membuat file Excel.');
+      }
+
+      final directory = await getTemporaryDirectory();
+      final fileName =
+          'growlit_history_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+      final filePath = '${directory.path}${Platform.pathSeparator}$fileName';
+      final file = File(filePath);
+      await file.writeAsBytes(bytes, flush: true);
+
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], text: 'Export history GrowLit'),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Gagal export Excel: $error')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final historyStream = FirebaseFirestore.instance
+        .collection('history')
+        .orderBy('recordedAt', descending: true)
+        .snapshots();
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Container(
@@ -120,23 +120,22 @@ class HistoryScreen extends StatelessWidget {
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Text(
-                      'History',
-                      style: Theme.of(context).textTheme.displayMedium
-                          ?.copyWith(
-                            color: AppColors.darkGreen,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                          ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Text(
+                    'History Time Series',
+                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                      color: AppColors.darkGreen,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Container(
+                ),
+                const SizedBox(height: 14),
+                Expanded(
+                  child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -157,7 +156,7 @@ class HistoryScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Snapshot 23.59 / 7 Hari Terakhir',
+                              'History Time Series',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
                                     color: AppColors.darkGreen,
@@ -165,7 +164,7 @@ class HistoryScreen extends StatelessWidget {
                                   ),
                             ),
                             ElevatedButton(
-                              onPressed: () {},
+                              onPressed: () => _exportHistoryToExcel(context),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: AppColors.resedaGreen,
                                 foregroundColor: Colors.white,
@@ -176,85 +175,145 @@ class HistoryScreen extends StatelessWidget {
                                 ),
                                 elevation: 0,
                               ),
-                              child: const Text('Export'),
+                              child: const Text('Export Excel'),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Text(
-                          'Yang ditampilkan adalah data terakhir tiap hari pada pukul 23.59.',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: AppColors.darkGreen.withValues(
-                                  alpha: 0.60,
-                                ),
-                              ),
-                        ),
                         const SizedBox(height: 12),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Table(
-                            border: TableBorder.all(
-                              color: AppColors.resedaGreen.withValues(
-                                alpha: 0.18,
-                              ),
-                            ),
-                            defaultVerticalAlignment:
-                                TableCellVerticalAlignment.middle,
-                            columnWidths: const {
-                              0: FixedColumnWidth(82),
-                              1: FixedColumnWidth(56),
-                              2: FixedColumnWidth(56),
-                              3: FixedColumnWidth(60),
-                              4: FixedColumnWidth(72),
-                              5: FixedColumnWidth(62),
-                              6: FixedColumnWidth(82),
-                              7: FixedColumnWidth(94),
+                        Expanded(
+                          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                            stream: historyStream,
+                            builder: (context, snapshot) {
+                              if (snapshot.hasError) {
+                                return Center(
+                                  child: Text(
+                                    'Gagal memuat history: ${snapshot.error}',
+                                    textAlign: TextAlign.center,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: Colors.redAccent),
+                                  ),
+                                );
+                              }
+
+                              if (snapshot.connectionState ==
+                                  ConnectionState.waiting) {
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+
+                              final docs = snapshot.data?.docs ?? [];
+                              if (docs.isEmpty) {
+                                return Center(
+                                  child: Text(
+                                    'Belum ada data history.',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(color: AppColors.darkGreen),
+                                  ),
+                                );
+                              }
+
+                              return SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SingleChildScrollView(
+                                  child: Table(
+                                    border: TableBorder.all(
+                                      color: AppColors.resedaGreen.withValues(
+                                        alpha: 0.18,
+                                      ),
+                                    ),
+                                    defaultVerticalAlignment:
+                                        TableCellVerticalAlignment.middle,
+                                    columnWidths: const {
+                                      0: FixedColumnWidth(108),
+                                      1: FixedColumnWidth(92),
+                                      2: FixedColumnWidth(76),
+                                      3: FixedColumnWidth(76),
+                                      4: FixedColumnWidth(76),
+                                      5: FixedColumnWidth(76),
+                                    },
+                                    children: [
+                                      const TableRow(
+                                        decoration: BoxDecoration(
+                                          color: Color(0xFFF4F8EA),
+                                        ),
+                                        children: [
+                                          _TableCell(
+                                            text: 'Tanggal',
+                                            isHeader: true,
+                                          ),
+                                          _TableCell(
+                                            text: 'Waktu',
+                                            isHeader: true,
+                                          ),
+                                          _TableCell(
+                                            text: 'LDR',
+                                            isHeader: true,
+                                          ),
+                                          _TableCell(
+                                            text: 'Jarak',
+                                            isHeader: true,
+                                          ),
+                                          _TableCell(
+                                            text: 'Lampu',
+                                            isHeader: true,
+                                          ),
+                                          _TableCell(
+                                            text: 'Pompa',
+                                            isHeader: true,
+                                          ),
+                                        ],
+                                      ),
+                                      ...docs.map((doc) {
+                                        final data = doc.data();
+                                        final recordedAtRaw =
+                                            data['recordedAt'];
+                                        final recordedAt =
+                                            recordedAtRaw is Timestamp
+                                            ? recordedAtRaw.toDate()
+                                            : DateTime.now();
+                                        return TableRow(
+                                          children: [
+                                            _TableCell(
+                                              text:
+                                                  '${_twoDigits(recordedAt.day)}/${_twoDigits(recordedAt.month)}/${recordedAt.year}',
+                                            ),
+                                            _TableCell(
+                                              text:
+                                                  '${_twoDigits(recordedAt.hour)}:${_twoDigits(recordedAt.minute)}',
+                                            ),
+                                            _TableCell(
+                                              text: _formatValue(data['ldr']),
+                                            ),
+                                            _TableCell(
+                                              text: _formatValue(data['jarak']),
+                                            ),
+                                            _StatusTableCell(
+                                              text: _formatValue(data['lampu']),
+                                            ),
+                                            _StatusTableCell(
+                                              text: _formatValue(data['pompa']),
+                                            ),
+                                          ],
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                              );
                             },
-                            children: [
-                              const TableRow(
-                                decoration: BoxDecoration(
-                                  color: Color(0xFFF4F8EA),
-                                ),
-                                children: [
-                                  _TableCell(text: 'Tanggal', isHeader: true),
-                                  _TableCell(text: 'Hari', isHeader: true),
-                                  _TableCell(text: 'Waktu', isHeader: true),
-                                  _TableCell(text: 'Air', isHeader: true),
-                                  _TableCell(
-                                    text: 'Status Air',
-                                    isHeader: true,
-                                  ),
-                                  _TableCell(text: 'Cahaya', isHeader: true),
-                                  _TableCell(
-                                    text: 'Status Cahaya',
-                                    isHeader: true,
-                                  ),
-                                  _TableCell(text: 'Kontrol', isHeader: true),
-                                ],
-                              ),
-                              ..._kWeeklyHistory.map(
-                                (item) => TableRow(
-                                  children: [
-                                    _TableCell(text: item.date),
-                                    _TableCell(text: item.day),
-                                    _TableCell(text: item.time),
-                                    _TableCell(text: item.waterLevel),
-                                    _StatusTableCell(text: item.waterStatus),
-                                    _TableCell(text: item.lightLevel),
-                                    _StatusTableCell(text: item.lightStatus),
-                                    _TableCell(text: item.controlNote),
-                                  ],
-                                ),
-                              ),
-                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -293,21 +352,11 @@ class _StatusTableCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = switch (text) {
-      'Cukup' => const Color(0xFFE8F5D8),
-      'Rendah' => const Color(0xFFFFE9C9),
-      'Kurang' => const Color(0xFFFFE1E1),
-      'Berlebih' => const Color(0xFFD9F0C5),
-      _ => const Color(0xFFF0F0F0),
-    };
-
-    final textColor = switch (text) {
-      'Cukup' => const Color(0xFF4E7A23),
-      'Rendah' => const Color(0xFF9A6500),
-      'Kurang' => const Color(0xFFB23B3B),
-      'Berlebih' => const Color(0xFF3F6D1C),
-      _ => AppColors.darkGreen,
-    };
+    final isOn = text.toUpperCase() == 'ON' || text == 'true';
+    final backgroundColor = isOn
+        ? const Color(0xFFD9F0C5)
+        : const Color(0xFFF0F0F0);
+    final textColor = isOn ? const Color(0xFF3F6D1C) : AppColors.darkGreen;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),

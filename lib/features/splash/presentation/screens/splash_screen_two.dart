@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:growlit_mobile/features/auth/presentation/screens/beranda_screen.dart';
 import 'package:growlit_mobile/features/auth/presentation/screens/login_screen.dart';
+import 'package:growlit_mobile/services/session_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
 class SplashScreenTwo extends StatefulWidget {
@@ -17,6 +19,7 @@ class _SplashScreenTwoState extends State<SplashScreenTwo> {
   @override
   void initState() {
     super.initState();
+    _checkSession();
     Timer(const Duration(milliseconds: 280), () {
       if (!mounted) return;
       setState(() {
@@ -30,6 +33,17 @@ class _SplashScreenTwoState extends State<SplashScreenTwo> {
         _showButton = true;
       });
     });
+  }
+
+  Future<void> _checkSession() async {
+    final session = await SessionService.instance.getValidSession();
+    if (!mounted || session == null) return;
+
+    Navigator.of(context).pushReplacement(
+      _buildRoute(
+        BerandaScreen(username: session.username, email: session.email),
+      ),
+    );
   }
 
   void _goToLogin() {

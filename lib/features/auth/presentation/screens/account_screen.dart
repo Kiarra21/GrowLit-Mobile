@@ -2,8 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
 class AccountScreen extends StatelessWidget {
-  const AccountScreen({super.key, required this.onLogoutPressed});
+  const AccountScreen({
+    super.key,
+    required this.username,
+    required this.email,
+    required this.onLogoutPressed,
+  });
 
+  final String username;
+  final String email;
   final VoidCallback onLogoutPressed;
 
   @override
@@ -72,7 +79,16 @@ class AccountScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        'user@gmail.com',
+                        username,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: AppColors.darkGreen,
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        email,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: AppColors.darkGreen,
                         ),

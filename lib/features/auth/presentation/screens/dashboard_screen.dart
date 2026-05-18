@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:growlit_mobile/services/iot_mqtt_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
+import 'monitoring_air_screen.dart';
+import 'monitoring_cahaya_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -10,9 +12,12 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+enum _DashboardSubView { main, air, cahaya }
+
 class _DashboardScreenState extends State<DashboardScreen> {
   final GrowlitMqttService _mqttService = GrowlitMqttService.instance;
   int _lastNotifiedCount = 0;
+  _DashboardSubView _currentView = _DashboardSubView.main;
 
   @override
   void initState() {
@@ -68,8 +73,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
           builder: (context, snapshot) {
             final sensorData = snapshot.data ?? GrowlitSensorData.placeholder();
 
-            return Scaffold(
-              backgroundColor: Colors.transparent,
+            if (_currentView == _DashboardSubView.air) {
+              return WillPopScope(
+                onWillPop: () async {
+                  setState(() => _currentView = _DashboardSubView.main);
+                  return false;
+                },
+                child: MonitoringAirScreen(
+                  onBack: () => setState(() => _currentView = _DashboardSubView.main),
+                ),
+              );
+            }
+            if (_currentView == _DashboardSubView.cahaya) {
+              return WillPopScope(
+                onWillPop: () async {
+                  setState(() => _currentView = _DashboardSubView.main);
+                  return false;
+                },
+                child: MonitoringCahayaScreen(
+                  onBack: () => setState(() => _currentView = _DashboardSubView.main),
+                ),
+              );
+            }
+
+            return WillPopScope(
+              onWillPop: () async {
+                // If we are on the main dashboard, allow normal back behavior (exit app or go to login)
+                return true;
+              },
+              child: Scaffold(
+                backgroundColor: Colors.transparent,
               body: Container(
                 constraints: const BoxConstraints.expand(),
                 decoration: const BoxDecoration(
@@ -154,6 +187,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ? 'pompa menyala'
                               : 'pompa mati',
                           progress: _distanceProgress(sensorData.distance),
+                          onTap: () {
+                            setState(() {
+                              _currentView = _DashboardSubView.air;
+                            });
+                          },
                         ),
                         const SizedBox(height: 14),
                         _MetricCard(
@@ -163,6 +201,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ? 'lampu menyala'
                               : 'lampu mati',
                           progress: _ldrProgress(sensorData.ldr),
+                          onTap: () {
+                            setState(() {
+                              _currentView = _DashboardSubView.cahaya;
+                            });
+                          },
                         ),
                         const SizedBox(height: 14),
                       ],
@@ -170,6 +213,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
+            )
             );
           },
         );
@@ -254,16 +298,20 @@ class _MetricCard extends StatelessWidget {
     required this.value,
     required this.subtitle,
     required this.progress,
+    this.onTap,
   });
 
   final String title;
   final String value;
   final String subtitle;
   final double progress;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -302,6 +350,7 @@ class _MetricCard extends StatelessWidget {
           ),
         ],
       ),
+    )
     );
   }
 }
@@ -428,4 +477,3 @@ class _Semi3DDiagram extends StatelessWidget {
     );
   }
 }
-

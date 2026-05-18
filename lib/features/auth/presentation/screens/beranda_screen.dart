@@ -163,43 +163,44 @@ class _GrowlitBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(0, 0, 0, 0),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        decoration: const BoxDecoration(
-          color: Color(0xFF3C4B2A),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              label: 'Beranda',
-              icon: Icons.home_rounded,
-              selected: selectedIndex == 0,
-              onTap: () => onChanged(0),
-            ),
-            _NavItem(
-              label: 'Notifikasi',
-              icon: Icons.notifications_rounded,
-              selected: selectedIndex == 1,
-              onTap: () => onChanged(1),
-            ),
-            _NavItem(
-              label: 'History',
-              icon: Icons.history_rounded,
-              selected: selectedIndex == 2,
-              onTap: () => onChanged(2),
-            ),
-            _NavItem(
-              label: 'Akun',
-              icon: Icons.person_rounded,
-              selected: selectedIndex == 3,
-              onTap: () => onChanged(3),
-            ),
-          ],
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF3C4B2A),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _NavItem(
+                label: 'Beranda',
+                icon: Icons.home_rounded,
+                selected: selectedIndex == 0,
+                onTap: () => onChanged(0),
+              ),
+              _NavItem(
+                label: 'Notifikasi',
+                icon: Icons.notifications_rounded,
+                selected: selectedIndex == 1,
+                onTap: () => onChanged(1),
+              ),
+              _NavItem(
+                label: 'History',
+                icon: Icons.history_rounded,
+                selected: selectedIndex == 2,
+                onTap: () => onChanged(2),
+              ),
+              _NavItem(
+                label: 'Akun',
+                icon: Icons.person_rounded,
+                selected: selectedIndex == 3,
+                onTap: () => onChanged(3),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -9,6 +9,7 @@ class HistoryService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static const String _lastSavedDateKey = 'history_last_saved_date';
+  bool _isSaving = false;
 
   /// Menyimpan data status terkini ke koleksi history
   /// Fungsi ini membaca dari 'status/terkini' dan menyimpannya ke 'history'
@@ -38,6 +39,8 @@ class HistoryService {
         );
       }
 
+      final todayKey = _dateKey(DateTime.now());
+
       // 2. Buat data history dengan timestamp server
       final historyData = {
         ...?latestStatus,
@@ -45,9 +48,8 @@ class HistoryService {
       };
 
       // 3. Simpan ke koleksi 'history'
-      final historyRef = await _firestore
-          .collection('history')
-          .add(historyData);
+      final historyRef = _firestore.collection('history').doc(todayKey);
+      await historyRef.set(historyData);
 
       if (kDebugMode) {
         debugPrint(
@@ -66,6 +68,13 @@ class HistoryService {
   }
 
   Future<void> saveDailyHistoryIfDue() async {
+    if (_isSaving) {
+      if (kDebugMode) {
+        debugPrint('[HistoryService] Save history masih berjalan, dilewati.');
+      }
+      return;
+    }
+
     final now = DateTime.now();
     final prefs = await SharedPreferences.getInstance();
     final lastSavedDate = prefs.getString(_lastSavedDateKey);
@@ -79,7 +88,12 @@ class HistoryService {
       return;
     }
 
-    await saveDailyHistory();
+    _isSaving = true;
+    try {
+      await saveDailyHistory();
+    } finally {
+      _isSaving = false;
+    }
   }
 
   String _dateKey(DateTime dateTime) {

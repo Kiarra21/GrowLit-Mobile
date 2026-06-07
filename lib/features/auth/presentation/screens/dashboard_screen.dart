@@ -6,7 +6,9 @@ import 'monitoring_air_screen.dart';
 import 'monitoring_cahaya_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({super.key, required this.username});
+
+  final String? username;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -38,6 +40,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final mqttService = GrowlitMqttService.instance;
     final notificationCount = mqttService.notifications.value.length;
+    final username = widget.username?.trim().isEmpty ?? true
+        ? 'User'
+        : widget.username!.trim();
 
     if (notificationCount > _lastNotifiedCount) {
       _lastNotifiedCount = notificationCount;
@@ -62,6 +67,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge([
         _mqttService.isConnected,
+        _mqttService.isDeviceOnline,
         _mqttService.lastError,
         mqttService.notifications,
       ]),
@@ -74,146 +80,157 @@ class _DashboardScreenState extends State<DashboardScreen> {
             final sensorData = snapshot.data ?? GrowlitSensorData.placeholder();
 
             if (_currentView == _DashboardSubView.air) {
-              return WillPopScope(
-                onWillPop: () async {
+              return PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, result) {
+                  if (didPop) return;
                   setState(() => _currentView = _DashboardSubView.main);
-                  return false;
                 },
                 child: MonitoringAirScreen(
-                  onBack: () => setState(() => _currentView = _DashboardSubView.main),
+                  onBack: () =>
+                      setState(() => _currentView = _DashboardSubView.main),
                 ),
               );
             }
             if (_currentView == _DashboardSubView.cahaya) {
-              return WillPopScope(
-                onWillPop: () async {
+              return PopScope(
+                canPop: false,
+                onPopInvokedWithResult: (didPop, result) {
+                  if (didPop) return;
                   setState(() => _currentView = _DashboardSubView.main);
-                  return false;
                 },
                 child: MonitoringCahayaScreen(
-                  onBack: () => setState(() => _currentView = _DashboardSubView.main),
+                  onBack: () =>
+                      setState(() => _currentView = _DashboardSubView.main),
                 ),
               );
             }
 
-            return WillPopScope(
-              onWillPop: () async {
-                // If we are on the main dashboard, allow normal back behavior (exit app or go to login)
-                return true;
-              },
+            return PopScope(
+              canPop: true,
               child: Scaffold(
                 backgroundColor: Colors.transparent,
-              body: Container(
-                constraints: const BoxConstraints.expand(),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xFFF7FAF1),
-                      Color(0xFFEAF5C8),
-                      Color(0xFFCBEA77),
-                    ],
-                    stops: [0.0, 0.38, 1.0],
+                body: Container(
+                  constraints: const BoxConstraints.expand(),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFFF7FAF1),
+                        Color(0xFFEAF5C8),
+                        Color(0xFFCBEA77),
+                      ],
+                      stops: [0.0, 0.38, 1.0],
+                    ),
                   ),
-                ),
-                child: SafeArea(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Halo, User !',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .displayMedium
-                                      ?.copyWith(
-                                        color: AppColors.darkGreen,
-                                        fontSize: 25,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Data kebun masuk dari MQTT HiveMQ Cloud',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                        color: AppColors.darkGreen.withValues(
-                                          alpha: 0.72,
-                                        ),
-                                        fontSize: 15,
-                                      ),
-                                ),
-                              ],
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: const Icon(
-                                  Icons.person_outline_rounded,
-                                  color: AppColors.resedaGreen,
-                                  size: 26,
+                  child: SafeArea(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 110),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Halo, $username !',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .displayMedium
+                                          ?.copyWith(
+                                            color: AppColors.darkGreen,
+                                            fontSize: 25,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Pantau kondisi tanamanmu dimanapun secara real-time.',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: AppColors.darkGreen
+                                                .withValues(alpha: 0.72),
+                                            fontSize: 15,
+                                          ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        _ConnectionBanner(
-                          isConnected: _mqttService.isConnected.value,
-                          message: _mqttService.lastError.value,
-                        ),
-                        const SizedBox(height: 18),
-                        _MetricCard(
-                          title: 'Ketersediaan Air',
-                          value: '${sensorData.distance.toStringAsFixed(1)} cm',
-                          subtitle: sensorData.pumpOn
-                              ? 'pompa menyala'
-                              : 'pompa mati',
-                          progress: _distanceProgress(sensorData.distance),
-                          onTap: () {
-                            setState(() {
-                              _currentView = _DashboardSubView.air;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                        _MetricCard(
-                          title: 'Intensitas Cahaya',
-                          value: sensorData.ldr.toString(),
-                          subtitle: sensorData.lampOn
-                              ? 'lampu menyala'
-                              : 'lampu mati',
-                          progress: _ldrProgress(sensorData.ldr),
-                          onTap: () {
-                            setState(() {
-                              _currentView = _DashboardSubView.cahaya;
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 14),
-                      ],
+                              const SizedBox(width: 12),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: SizedBox(
+                                  width: 34,
+                                  height: 34,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: const Icon(
+                                      Icons.person_outline_rounded,
+                                      color: AppColors.resedaGreen,
+                                      size: 26,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _ConnectionBanner(
+                            isBrokerConnected: _mqttService.isConnected.value,
+                            isDeviceOnline: _mqttService.isDeviceOnline.value,
+                            message: _mqttService.lastError.value,
+                          ),
+                          const SizedBox(height: 18),
+                          _MetricCard(
+                            title: 'Tinggi Air',
+                            value:
+                                '${sensorData.distance.toStringAsFixed(1)} cm',
+                            subtitle: sensorData.pumpOn
+                                ? 'pompa menyala'
+                                : 'pompa mati',
+                            progress: _distanceProgress(sensorData.distance),
+                            onTap: () {
+                              setState(() {
+                                _currentView = _DashboardSubView.air;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          _MetricCard(
+                            title: 'Intensitas Cahaya',
+                            value: '${sensorData.ldr.toStringAsFixed(1)} lx',
+                            subtitle: sensorData.lampOn
+                                ? 'lampu menyala'
+                                : 'lampu mati',
+                            progress: _ldrProgress(sensorData.ldr),
+                            onTap: () {
+                              setState(() {
+                                _currentView = _DashboardSubView.cahaya;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                        ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            )
             );
           },
         );
@@ -222,31 +239,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   double _distanceProgress(double distance) {
-    final normalized = 1 - (distance / 20);
+    const maxWaterHeightCm = 2.5;
+    final normalized = distance / maxWaterHeightCm;
     return normalized.clamp(0.0, 1.0);
   }
 
-  double _ldrProgress(int ldr) {
-    final normalized = ldr / 4095;
+  double _ldrProgress(double ldr) {
+    const fullLux = 20.0;
+    final normalized = ldr / fullLux;
     return normalized.clamp(0.0, 1.0);
   }
 }
 
 class _ConnectionBanner extends StatelessWidget {
-  const _ConnectionBanner({required this.isConnected, required this.message});
+  const _ConnectionBanner({
+    required this.isBrokerConnected,
+    required this.isDeviceOnline,
+    required this.message,
+  });
 
-  final bool isConnected;
+  final bool isBrokerConnected;
+  final bool isDeviceOnline;
   final String? message;
 
   @override
   Widget build(BuildContext context) {
-    final background = isConnected
+    final isOnline = isBrokerConnected && isDeviceOnline;
+    final background = isOnline
         ? const Color(0xFFE7F4D6)
         : const Color(0xFFFDEBD7);
-    final accent = isConnected
-        ? AppColors.resedaGreen
-        : const Color(0xFFC06A2C);
-    final label = isConnected ? 'MQTT tersambung' : 'MQTT belum tersambung';
+    final accent = isOnline ? AppColors.resedaGreen : const Color(0xFFC06A2C);
+    final label = isOnline
+        ? 'Alat IoT online'
+        : isBrokerConnected
+        ? 'Alat IoT offline'
+        : 'MQTT belum tersambung';
+    final detail = isOnline
+        ? 'Data sensor masuk dari alat IoT.'
+        : isBrokerConnected
+        ? (message ??
+              'Alat IoT tidak merespons.')
+        : message;
 
     return Container(
       width: double.infinity,
@@ -259,7 +292,7 @@ class _ConnectionBanner extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            isConnected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+            isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
             color: accent,
           ),
           const SizedBox(width: 10),
@@ -270,17 +303,17 @@ class _ConnectionBanner extends StatelessWidget {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.darkGreen,
-                        fontWeight: FontWeight.w700,
-                      ),
+                    color: AppColors.darkGreen,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                if (message != null) ...[
+                if (detail != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    message!,
+                    detail,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.darkGreen.withValues(alpha: 0.72),
-                        ),
+                      color: AppColors.darkGreen.withValues(alpha: 0.72),
+                    ),
                   ),
                 ],
               ],
@@ -312,45 +345,45 @@ class _MetricCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.darkGreen.withValues(alpha: 0.11),
-            blurRadius: 24,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.darkGreen,
-                      fontWeight: FontWeight.w800,
-                    ),
-              ),
-              const Icon(Icons.circle, color: AppColors.lightGreen, size: 14),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: _Semi3DDiagram(
-              value: value,
-              subtitle: subtitle,
-              progress: progress,
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.darkGreen.withValues(alpha: 0.11),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
             ),
-          ),
-        ],
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppColors.darkGreen,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const Icon(Icons.circle, color: AppColors.lightGreen, size: 14),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: _Semi3DDiagram(
+                value: value,
+                subtitle: subtitle,
+                progress: progress,
+              ),
+            ),
+          ],
+        ),
       ),
-    )
     );
   }
 }
@@ -453,10 +486,10 @@ class _Semi3DDiagram extends StatelessWidget {
                   child: Text(
                     value,
                     style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppColors.darkGreen,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                        ),
+                      color: AppColors.darkGreen,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -464,9 +497,9 @@ class _Semi3DDiagram extends StatelessWidget {
                   child: Text(
                     subtitle,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: AppColors.darkGreen.withValues(alpha: 0.62),
-                          fontSize: 10.5,
-                        ),
+                      color: AppColors.darkGreen.withValues(alpha: 0.62),
+                      fontSize: 10.5,
+                    ),
                   ),
                 ),
               ],

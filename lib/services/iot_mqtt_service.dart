@@ -31,7 +31,7 @@ class GrowlitSensorData {
     required this.receivedAt,
   });
 
-  final int ldr;
+  final double ldr;
   final double distance;
   final bool lampOn;
   final bool pumpOn;
@@ -39,7 +39,7 @@ class GrowlitSensorData {
 
   factory GrowlitSensorData.fromJson(Map<String, dynamic> json) {
     return GrowlitSensorData(
-      ldr: (json['ldr'] as num?)?.toInt() ?? 0,
+      ldr: (json['ldr'] as num?)?.toDouble() ?? 0,
       distance: (json['jarak'] as num?)?.toDouble() ?? 0,
       lampOn: json['lampu'] == true,
       pumpOn: json['pompa'] == true,
@@ -119,6 +119,7 @@ class GrowlitMqttService {
   _updatesSubscription;
 
   final ValueNotifier<bool> isConnected = ValueNotifier<bool>(false);
+  final ValueNotifier<bool> isDeviceOnline = ValueNotifier<bool>(false);
   final ValueNotifier<String?> lastError = ValueNotifier<String?>(null);
   final ValueNotifier<List<GrowlitNotificationItem>> notifications =
       ValueNotifier<List<GrowlitNotificationItem>>(<GrowlitNotificationItem>[]);
@@ -126,6 +127,7 @@ class GrowlitMqttService {
       StreamController<GrowlitSensorData>.broadcast();
 
   GrowlitSensorData? _latestSensorData;
+  Timer? _deviceOfflineTimer;
   bool _connecting = false;
   bool? _lastLampOn;
   bool? _lastPumpOn;
@@ -198,15 +200,19 @@ class GrowlitMqttService {
       lastError.value = 'MQTT belum tersambung.';
       return;
     }
-    final builder = MqttClientPayloadBuilder()..addString(command);
+    final builder = MqttClientPayloadBuilder()
+      ..addString(command.trim().toUpperCase());
     _client.publishMessage(controlTopic, MqttQos.atLeastOnce, builder.payload!);
   }
 
   void dispose() {
     _updatesSubscription?.cancel();
     _updatesSubscription = null;
+    _deviceOfflineTimer?.cancel();
+    _deviceOfflineTimer = null;
     _sensorController.close();
     isConnected.dispose();
+    isDeviceOnline.dispose();
     lastError.dispose();
     notifications.dispose();
     _client.disconnect();
@@ -248,6 +254,7 @@ class GrowlitMqttService {
           final data = GrowlitSensorData.fromJson(jsonDecode(payload));
           _sensorController.add(data);
           _latestSensorData = data;
+          _markDeviceOnline();
 
           // Perbarui status di Firestore
           _updateFirestore(data);
@@ -307,6 +314,16 @@ class GrowlitMqttService {
     }
   }
 
+  void _markDeviceOnline() {
+    isDeviceOnline.value = true;
+    _deviceOfflineTimer?.cancel();
+    _deviceOfflineTimer = Timer(const Duration(seconds: 45), () {
+      isDeviceOnline.value = false;
+      lastError.value =
+          'Alat IoT tidak mengirim data sensor dalam 45 detik terakhir.';
+    });
+  }
+
   String _formatTime(DateTime dateTime) {
     final hour = dateTime.hour.toString().padLeft(2, '0');
     final minute = dateTime.minute.toString().padLeft(2, '0');
@@ -326,11 +343,13 @@ class GrowlitMqttService {
       debugPrint('MQTT: Disconnected. status=$status');
     }
     isConnected.value = false;
+    isDeviceOnline.value = false;
   }
 
   void _handleAutoReconnect() {
     if (kDebugMode) debugPrint('MQTT: Auto reconnecting...');
     isConnected.value = false;
+    isDeviceOnline.value = false;
   }
 
   void _handleAutoReconnected() {

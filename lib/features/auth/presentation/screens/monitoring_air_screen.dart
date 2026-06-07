@@ -3,55 +3,55 @@ import 'package:growlit_mobile/services/iot_mqtt_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
 class MonitoringAirScreen extends StatefulWidget {
-  final VoidCallback onBack;
-
   const MonitoringAirScreen({super.key, required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   State<MonitoringAirScreen> createState() => _MonitoringAirScreenState();
 }
 
 class _MonitoringAirScreenState extends State<MonitoringAirScreen> {
+  static const double _minWaterHeightCm = 2.0;
+  static const double _maxWaterHeightCm = 2.5;
+
   final GrowlitMqttService _mqttService = GrowlitMqttService.instance;
 
-  double _distanceProgress(double distance) {
-    final normalized = 1 - (distance / 40);
-    return normalized.clamp(0.0, 1.0);
+  double _heightProgress(double height) {
+    return (height / _maxWaterHeightCm).clamp(0.0, 1.0);
   }
 
-  String _getStatus(double distance) {
-    if (distance >= 30) return 'Rendah';
-    if (distance <= 10) return 'Tinggi';
+  String _status(double height) {
+    if (height < _minWaterHeightCm) return 'Kurang';
+    if (height > _maxWaterHeightCm) return 'Berlebih';
     return 'Normal';
   }
 
-  Color _getStatusColor(String status) {
-    if (status == 'Rendah') return Colors.red;
-    if (status == 'Tinggi') return Colors.blue;
-    return AppColors.fernGreen;
+  Color _statusColor(String status) {
+    if (status == 'Normal') return AppColors.fernGreen;
+    return const Color(0xFFC06A2C);
   }
 
-  String _getStatusDescription(String status) {
-    if (status == 'Rendah') {
-      return 'Ketersediaan air berada di bawah batas optimal, sistem akan mengaktifkan pompa.';
-    } else if (status == 'Tinggi') {
-      return 'Ketersediaan air telah mencapai batas maksimal, sistem mematikan pompa.';
-    } else {
-      return 'Ketersediaan air berada dalam batas optimal, sirkulasi berjalan dengan baik.';
+  String _statusDescription(String status) {
+    if (status == 'Kurang') {
+      return 'Tinggi air di bawah 2 cm, pompa akan menyala otomatis.';
     }
+    if (status == 'Berlebih') {
+      return 'Tinggi air sudah melewati batas normal 2.5 cm. Pompa akan tetap mati.';
+    }
+    return 'Tinggi air berada di rentang normal 2 sampai 2.5 cm.';
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<GrowlitSensorData>(
       stream: _mqttService.sensorStream,
-      initialData: _mqttService.latestSensorData ?? GrowlitSensorData.placeholder(),
+      initialData:
+          _mqttService.latestSensorData ?? GrowlitSensorData.placeholder(),
       builder: (context, snapshot) {
         final sensorData = snapshot.data ?? GrowlitSensorData.placeholder();
-        final progress = _distanceProgress(sensorData.distance);
-        final status = _getStatus(sensorData.distance);
-        final statusColor = _getStatusColor(status);
-        final statusDesc = _getStatusDescription(status);
+        final status = _status(sensorData.distance);
+        final statusColor = _statusColor(status);
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -71,139 +71,59 @@ class _MonitoringAirScreenState extends State<MonitoringAirScreen> {
             ),
             child: SafeArea(
               bottom: false,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: AppColors.darkGreen,
-                            ),
-                            onPressed: widget.onBack,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _MonitoringHeader(
+                      title: 'Tinggi Air',
+                      subtitle: 'Monitoring tinggi air hidroponik',
+                      icon: Icons.water_drop_rounded,
+                      onBack: widget.onBack,
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      decoration: _cardDecoration(),
+                      child: Column(
+                        children: [
+                          _SensorGauge(
+                            value:
+                                '${sensorData.distance.toStringAsFixed(1)} cm',
+                            subtitle: status.toLowerCase(),
+                            progress: _heightProgress(sensorData.distance),
+                            icon: Icons.water_drop_rounded,
                           ),
+                          const SizedBox(height: 18),
+                          _StatusPanel(
+                            title: 'Status Air : $status',
+                            description: _statusDescription(status),
+                            color: statusColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _SectionCard(
+                      title: 'Setelan Otomatis',
+                      children: const [
+                        _RuleTile(
+                          icon: Icons.water_drop_rounded,
+                          title: 'Pompa menyala',
+                          subtitle: 'Jika tinggi air < 2 cm',
                         ),
-                        Text(
-                          'Monitoring Air',
-                          style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                                color: AppColors.darkGreen,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                              ),
+                        SizedBox(height: 10),
+                        _RuleTile(
+                          icon: Icons.format_color_reset_rounded,
+                          title: 'Pompa mati',
+                          subtitle: 'Jika tinggi air >= 2 cm',
                         ),
                       ],
                     ),
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.darkGreen.withValues(alpha: 0.1),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 30),
-                              decoration: BoxDecoration(
-                                color: AppColors.resedaGreen,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.15),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: _AirGauge(
-                                  value: '${sensorData.distance.toStringAsFixed(0)} cm',
-                                  subtitle: status.toLowerCase(),
-                                  progress: progress,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Status Air : $status',
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              statusDesc,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppColors.darkMoss.withValues(alpha: 0.7),
-                                    height: 1.3,
-                                    fontSize: 15,
-                                  ),
-                            ),
-                            const SizedBox(height: 24),
-                            Divider(
-                              color: AppColors.darkGreen.withValues(alpha: 0.3),
-                              thickness: 1,
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Setelan Otomatis',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: AppColors.darkMoss,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                            ),
-                            const SizedBox(height: 20),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ControlButton(
-                                    icon: Icons.water_drop,
-                                    label: '> 30cm',
-                                    isActive: true,
-                                    onTap: () {
-                                      _mqttService.publishCommand('pump_on');
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _ControlButton(
-                                    icon: Icons.format_color_reset_rounded,
-                                    label: '< 10cm',
-                                    isActive: false,
-                                    onTap: () {
-                                      _mqttService.publishCommand('pump_off');
-                                    },
-                                  ),
-                                ),
-                              ],
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -211,84 +131,179 @@ class _MonitoringAirScreenState extends State<MonitoringAirScreen> {
       },
     );
   }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.darkGreen.withValues(alpha: 0.11),
+          blurRadius: 24,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+  }
 }
 
-class _AirGauge extends StatelessWidget {
-  const _AirGauge({
+class _MonitoringHeader extends StatelessWidget {
+  const _MonitoringHeader({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: onBack,
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.darkGreen,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          width: 42,
+          height: 42,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: AppColors.resedaGreen),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  color: AppColors.darkGreen,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.darkGreen.withValues(alpha: 0.68),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SensorGauge extends StatelessWidget {
+  const _SensorGauge({
     required this.value,
     required this.subtitle,
     required this.progress,
+    required this.icon,
   });
 
   final String value;
   final String subtitle;
   final double progress;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 160,
-      height: 160,
+      width: 188,
+      height: 188,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Base untuk membuat shadow tanpa bocor ke tengah (warna sama dengan background)
-          Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.resedaGreen,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+          Positioned(
+            bottom: 4,
+            child: Container(
+              width: 138,
+              height: 138,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFB9B9B9).withValues(alpha: 0.22),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.07),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(
-            width: 160,
-            height: 160,
-            child: CircularProgressIndicator(
-              value: 1.0,
-              strokeWidth: 20,
-              backgroundColor: Colors.transparent,
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFE8E8E8)),
-            ),
-          ),
-          SizedBox(
-            width: 160,
-            height: 160,
+            width: 142,
+            height: 142,
             child: CircularProgressIndicator(
               value: progress,
-              strokeWidth: 20,
-              backgroundColor: Colors.transparent,
-              valueColor: const AlwaysStoppedAnimation(AppColors.darkMoss), // Make progress dark like the mockup
+              strokeWidth: 14,
+              backgroundColor: const Color(0xFFD8D8D8),
+              valueColor: const AlwaysStoppedAnimation(AppColors.resedaGreen),
               strokeCap: StrokeCap.round,
             ),
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 22,
-                ),
+          Container(
+            width: 112,
+            height: 112,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                center: Alignment(-0.35, -0.35),
+                radius: 1.0,
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFF7FAF1),
+                  Color(0xFFE7E7E7),
+                ],
+                stops: [0.0, 0.8, 1.0],
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: AppColors.resedaGreen, size: 22),
+                const SizedBox(height: 6),
+                FittedBox(
+                  child: Text(
+                    value,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: AppColors.darkGreen,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppColors.darkGreen.withValues(alpha: 0.62),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -296,44 +311,138 @@ class _AirGauge extends StatelessWidget {
   }
 }
 
-class _ControlButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _ControlButton({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({
+    required this.title,
+    required this.description,
+    required this.color,
   });
+
+  final String title;
+  final String description;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: AppColors.resedaGreen,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.white, size: 32),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.darkGreen.withValues(alpha: 0.72),
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.darkGreen.withValues(alpha: 0.09),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.darkGreen,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleTile extends StatelessWidget {
+  const _RuleTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: AppColors.resedaGreen.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: AppColors.resedaGreen, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.darkGreen,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.darkGreen.withValues(alpha: 0.66),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

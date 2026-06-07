@@ -1,4 +1,6 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:growlit_mobile/firebase_options.dart';
 import 'package:workmanager/workmanager.dart';
 import 'history_service.dart';
 
@@ -13,6 +15,9 @@ void callbackDispatcher() {
       }
 
       if (task == 'saveDailyHistory') {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
         // Eksekusi fungsi untuk menyimpan history
         await HistoryService.instance.saveDailyHistoryIfDue();
       }
@@ -48,7 +53,7 @@ class BackgroundTaskService {
     }
   }
 
-  /// Schedule daily history task pada jam 00:17 WIB (test)
+  /// Schedule daily history task mendekati akhir hari.
   Future<void> scheduleDailyHistory() async {
     try {
       await Workmanager().registerPeriodicTask(
@@ -56,6 +61,8 @@ class BackgroundTaskService {
         'saveDailyHistory',
         frequency: const Duration(hours: 24),
         initialDelay: _calculateInitialDelay(),
+        existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+        tag: 'saveDailyHistory',
       );
 
       if (kDebugMode) {
@@ -71,7 +78,7 @@ class BackgroundTaskService {
   /// Cancel scheduled task
   Future<void> cancelDailyHistory() async {
     try {
-      await Workmanager().cancelByTag('saveDailyHistory');
+      await Workmanager().cancelByUniqueName('saveDailyHistory');
       if (kDebugMode) {
         debugPrint('[BackgroundTaskService] Daily history task cancelled');
       }
@@ -82,10 +89,10 @@ class BackgroundTaskService {
     }
   }
 
-  /// Hitung waktu tunggu sampai jam 00:17 WIB (test)
+  /// Hitung waktu tunggu sampai jam 23:59.
   Duration _calculateInitialDelay() {
     final now = DateTime.now();
-    final targetTime = DateTime(now.year, now.month, now.day, 0, 17);
+    final targetTime = DateTime(now.year, now.month, now.day, 23, 59);
 
     Duration delay;
     if (now.isAfter(targetTime)) {

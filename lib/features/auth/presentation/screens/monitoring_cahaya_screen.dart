@@ -3,56 +3,51 @@ import 'package:growlit_mobile/services/iot_mqtt_service.dart';
 import 'package:growlit_mobile/theme/colors.dart';
 
 class MonitoringCahayaScreen extends StatefulWidget {
-  final VoidCallback onBack;
-
   const MonitoringCahayaScreen({super.key, required this.onBack});
+
+  final VoidCallback onBack;
 
   @override
   State<MonitoringCahayaScreen> createState() => _MonitoringCahayaScreenState();
 }
 
 class _MonitoringCahayaScreenState extends State<MonitoringCahayaScreen> {
+  static const double _minLux = 10.0;
+  static const double _fullLux = 20.0;
+
   final GrowlitMqttService _mqttService = GrowlitMqttService.instance;
 
-  double _ldrProgress(int ldr) {
-    // Max LDR reading is typically 4095. 
-    // Progress bar fills as intensity increases.
-    final normalized = ldr / 4095.0;
-    return normalized.clamp(0.0, 1.0);
+  double _luxProgress(double lux) {
+    return (lux / _fullLux).clamp(0.0, 1.0);
   }
 
-  String _getStatus(int ldr) {
-    if (ldr > 1000) return 'Berlebih';
-    if (ldr < 300) return 'Kurang';
+  String _status(double lux) {
+    if (lux < _minLux) return 'Kurang';
     return 'Normal';
   }
 
-  Color _getStatusColor(String status) {
-    if (status == 'Berlebih' || status == 'Kurang') return Colors.red;
-    return AppColors.fernGreen;
+  Color _statusColor(String status) {
+    if (status == 'Normal') return AppColors.fernGreen;
+    return const Color(0xFFC06A2C);
   }
 
-  String _getStatusDescription(String status) {
-    if (status == 'Berlebih') {
-      return 'Intensitas cahaya melebihi kebutuhan dan dapat meningkatkan penguapan air.';
-    } else if (status == 'Kurang') {
-      return 'Intensitas cahaya kurang, sistem akan mengaktifkan lampu.';
-    } else {
-      return 'Intensitas cahaya berada dalam batas optimal, pertumbuhan berjalan baik.';
+  String _statusDescription(String status) {
+    if (status == 'Kurang') {
+      return 'Lux di bawah 10, lampu akan menyala otomatis.';
     }
+    return 'Lux sudah 10 atau lebih, lampu akan mati otomatis.';
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<GrowlitSensorData>(
       stream: _mqttService.sensorStream,
-      initialData: _mqttService.latestSensorData ?? GrowlitSensorData.placeholder(),
+      initialData:
+          _mqttService.latestSensorData ?? GrowlitSensorData.placeholder(),
       builder: (context, snapshot) {
         final sensorData = snapshot.data ?? GrowlitSensorData.placeholder();
-        final progress = _ldrProgress(sensorData.ldr);
-        final status = _getStatus(sensorData.ldr);
-        final statusColor = _getStatusColor(status);
-        final statusDesc = _getStatusDescription(status);
+        final status = _status(sensorData.ldr);
+        final statusColor = _statusColor(status);
 
         return Scaffold(
           backgroundColor: Colors.transparent,
@@ -72,138 +67,58 @@ class _MonitoringCahayaScreenState extends State<MonitoringCahayaScreen> {
             ),
             child: SafeArea(
               bottom: false,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: AppColors.darkGreen,
-                            ),
-                            onPressed: widget.onBack,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _MonitoringHeader(
+                      title: 'Intensitas Cahaya',
+                      subtitle: 'Monitoring cahaya dalam satuan lux',
+                      icon: Icons.light_mode_rounded,
+                      onBack: widget.onBack,
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                      decoration: _cardDecoration(),
+                      child: Column(
+                        children: [
+                          _SensorGauge(
+                            value: '${sensorData.ldr.toStringAsFixed(1)} lx',
+                            subtitle: status.toLowerCase(),
+                            progress: _luxProgress(sensorData.ldr),
+                            icon: Icons.light_mode_rounded,
                           ),
+                          const SizedBox(height: 18),
+                          _StatusPanel(
+                            title: 'Status Cahaya : $status',
+                            description: _statusDescription(status),
+                            color: statusColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    _SectionCard(
+                      title: 'Setelan Otomatis',
+                      children: const [
+                        _RuleTile(
+                          icon: Icons.lightbulb_rounded,
+                          title: 'Lampu menyala',
+                          subtitle: 'Jika lux < 10',
                         ),
-                        Text(
-                          'Monitoring Cahaya',
-                          style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                                color: AppColors.darkGreen,
-                                fontSize: 26,
-                                fontWeight: FontWeight.w900,
-                              ),
+                        SizedBox(height: 10),
+                        _RuleTile(
+                          icon: Icons.lightbulb_outline_rounded,
+                          title: 'Lampu mati',
+                          subtitle: 'Jika lux >= 10',
                         ),
                       ],
                     ),
-                  ),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.darkGreen.withValues(alpha: 0.1),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(vertical: 30),
-                              decoration: BoxDecoration(
-                                color: AppColors.resedaGreen,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.15),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Center(
-                                child: _LightGauge(
-                                  value: '${sensorData.ldr} lx',
-                                  subtitle: status.toLowerCase(),
-                                  progress: progress,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Status Cahaya : $status',
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              statusDesc,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: AppColors.darkMoss.withValues(alpha: 0.7),
-                                    height: 1.4,
-                                    fontSize: 15,
-                                  ),
-                            ),
-                            const SizedBox(height: 24),
-                            Divider(
-                              color: AppColors.darkGreen.withValues(alpha: 0.3),
-                              thickness: 1,
-                            ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Setelan Otomatis',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                    color: AppColors.darkMoss,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 16,
-                                  ),
-                            ),
-                            const SizedBox(height: 20),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _ControlButton(
-                                    icon: Icons.lightbulb_outline_rounded,
-                                    label: '< 300 lx',
-                                    onTap: () {
-                                      _mqttService.publishCommand('lamp_on');
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _ControlButton(
-                                    icon: Icons.lightbulb_outline_rounded,
-                                    label: '> 1000 lx',
-                                    isOffIcon: true, // This will apply the perfectly centered slash
-                                    onTap: () {
-                                      _mqttService.publishCommand('lamp_off');
-                                    },
-                                  ),
-                                ),
-                              ],
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -211,84 +126,179 @@ class _MonitoringCahayaScreenState extends State<MonitoringCahayaScreen> {
       },
     );
   }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.darkGreen.withValues(alpha: 0.11),
+          blurRadius: 24,
+          offset: const Offset(0, 10),
+        ),
+      ],
+    );
+  }
 }
 
-class _LightGauge extends StatelessWidget {
-  const _LightGauge({
+class _MonitoringHeader extends StatelessWidget {
+  const _MonitoringHeader({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onBack,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: onBack,
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.darkGreen,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Container(
+          width: 42,
+          height: 42,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: AppColors.resedaGreen),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                  color: AppColors.darkGreen,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.darkGreen.withValues(alpha: 0.68),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SensorGauge extends StatelessWidget {
+  const _SensorGauge({
     required this.value,
     required this.subtitle,
     required this.progress,
+    required this.icon,
   });
 
   final String value;
   final String subtitle;
   final double progress;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 160,
-      height: 160,
+      width: 188,
+      height: 188,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Base untuk membuat shadow tanpa bocor ke tengah (warna sama dengan background)
-          Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.resedaGreen,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 18,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+          Positioned(
+            bottom: 4,
+            child: Container(
+              width: 138,
+              height: 138,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFB9B9B9).withValues(alpha: 0.22),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.07),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
             ),
           ),
           SizedBox(
-            width: 160,
-            height: 160,
-            child: CircularProgressIndicator(
-              value: 1.0,
-              strokeWidth: 20,
-              backgroundColor: Colors.transparent,
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFE8E8E8)),
-            ),
-          ),
-          SizedBox(
-            width: 160,
-            height: 160,
+            width: 142,
+            height: 142,
             child: CircularProgressIndicator(
               value: progress,
-              strokeWidth: 20,
-              backgroundColor: Colors.transparent,
-              valueColor: const AlwaysStoppedAnimation(AppColors.darkMoss), // Make progress dark like mockup
+              strokeWidth: 14,
+              backgroundColor: const Color(0xFFD8D8D8),
+              valueColor: const AlwaysStoppedAnimation(AppColors.resedaGreen),
               strokeCap: StrokeCap.round,
             ),
           ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 22,
-                ),
+          Container(
+            width: 112,
+            height: 112,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                center: Alignment(-0.35, -0.35),
+                radius: 1.0,
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFF7FAF1),
+                  Color(0xFFE7E7E7),
+                ],
+                stops: [0.0, 0.8, 1.0],
               ),
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 16,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: AppColors.resedaGreen, size: 22),
+                const SizedBox(height: 6),
+                FittedBox(
+                  child: Text(
+                    value,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: AppColors.darkGreen,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: AppColors.darkGreen.withValues(alpha: 0.62),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -296,58 +306,138 @@ class _LightGauge extends StatelessWidget {
   }
 }
 
-class _ControlButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isOffIcon;
-  final VoidCallback onTap;
-
-  const _ControlButton({
-    required this.icon,
-    required this.label,
-    this.isOffIcon = false,
-    required this.onTap,
+class _StatusPanel extends StatelessWidget {
+  const _StatusPanel({
+    required this.title,
+    required this.description,
+    required this.color,
   });
+
+  final String title;
+  final String description;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: AppColors.resedaGreen,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 32),
-                if (isOffIcon)
-                  Transform.rotate(
-                    angle: -0.785, // 45 degrees
-                    child: Container(
-                      width: 38,
-                      height: 3,
-                      color: Colors.white,
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.darkGreen.withValues(alpha: 0.72),
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.darkGreen.withValues(alpha: 0.09),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: AppColors.darkGreen,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleTile extends StatelessWidget {
+  const _RuleTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: AppColors.resedaGreen.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: AppColors.resedaGreen, size: 21),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.darkGreen,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppColors.darkGreen.withValues(alpha: 0.66),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

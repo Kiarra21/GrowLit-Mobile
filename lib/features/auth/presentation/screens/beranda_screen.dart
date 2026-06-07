@@ -11,8 +11,8 @@ import 'login_screen.dart';
 class BerandaScreen extends StatefulWidget {
   const BerandaScreen({super.key, required this.username, required this.email});
 
-  final String username;
-  final String email;
+  final String? username;
+  final String? email;
 
   @override
   State<BerandaScreen> createState() => _BerandaScreenState();
@@ -21,13 +21,23 @@ class BerandaScreen extends StatefulWidget {
 class _BerandaScreenState extends State<BerandaScreen> {
   int _selectedIndex = 0;
 
+  String get _username {
+    final value = widget.username?.trim();
+    return value == null || value.isEmpty ? 'User' : value;
+  }
+
+  String get _email {
+    final value = widget.email?.trim();
+    return value == null || value.isEmpty ? '-' : value;
+  }
+
   late final List<Widget> _pages = <Widget>[
-    const DashboardScreen(),
+    DashboardScreen(username: _username),
     const NotificationsScreen(),
     const HistoryScreen(),
     AccountScreen(
-      username: widget.username,
-      email: widget.email,
+      username: _username,
+      email: _email,
       onLogoutPressed: _showLogoutDialog,
     ),
   ];
